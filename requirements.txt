@@ -1,6 +1,5 @@
-streamlit
-flask
-requests
-keras
-tensorflow
+Flask
+gunicorn
 numpy
+keras
+tensorflow-cpu
