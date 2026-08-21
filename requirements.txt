@@ -1,0 +1,6 @@
+streamlit
+flask
+requests
+keras
+tensorflow
+numpy
