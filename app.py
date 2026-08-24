@@ -1,126 +1,258 @@
-"""
-🚀 Production Flask API for Keras/ANN Model Deployment
-📦 Serves single and batch predictions for a 10-feature input ANN
-"""
-
 import os
 import pickle
-import logging
 import numpy as np
-from flask import Flask, request, jsonify
-
-# ---------------------------------------------------------
-# 🛠️ Configuration & Logging Setup
-# ---------------------------------------------------------
-logging.basicConfig(
-    level=logging.INFO,
-    format="%(asctime)s [%(levelname)s] ⚡ %(message)s",
-    handlers=[logging.StreamHandler()]
-)
-logger = logging.getLogger(__name__)
+from flask import Flask, request, render_template_string
 
 app = Flask(__name__)
 
-MODEL_PATH = os.environ.get("MODEL_PATH", "ANN.pkl")
-EXPECTED_FEATURES = 10
-DECISION_THRESHOLD = 0.5
-
-# ---------------------------------------------------------
-# 🧠 Model Loader
-# ---------------------------------------------------------
+# --- Model Loading ---
+MODEL_PATH = "ANN.pkl"
 model = None
 
-def load_prediction_model():
-    """Loads the serialized Keras model from disk."""
-    global model
-    try:
-        logger.info(f"🔄 Loading model from `{MODEL_PATH}`...")
-        with open(MODEL_PATH, "rb") as f:
-            model = pickle.load(f)
-        logger.info("✅ ANN Model successfully loaded and ready for inference!")
-    except Exception as e:
-        logger.error(f"❌ Failed to load model: {str(e)}")
-        raise e
+try:
+    with open(MODEL_PATH, "rb") as f:
+        model = pickle.load(f)
+    print("✅ Model loaded successfully!")
+except Exception as e:
+    print(f"❌ Error loading model: {e}")
 
-# Load model at startup
-load_prediction_model()
-
-# ---------------------------------------------------------
-# 🌐 API Endpoints
-# ---------------------------------------------------------
-
-@app.route("/", methods=["GET"])
-def health_check():
-    """📡 AWS ALB / ECS / EB Health Check Endpoint"""
-    return jsonify({
-        "status": "healthy",
-        "service": "ANN Inference Engine",
-        "expected_features": EXPECTED_FEATURES,
-        "model_loaded": model is not None
-    }), 200
-
-
-@app.route("/predict", methods=["POST"])
-def predict():
-    """
-    🎯 Main Prediction Endpoint
-    
-    Accepts JSON payloads:
-    1. Single sample:  {"features": [1.0, 2.0, ..., 10.0]}
-    2. Batch samples:  {"features": [[1.0, ..., 10.0], [2.0, ..., 10.0]]}
-    """
-    if not request.is_json:
-        return jsonify({"error": "Invalid Content-Type. Expected `application/json`."}), 415
-
-    data = request.get_json()
-
-    if not data or "features" not in data:
-        return jsonify({
-            "error": "Missing `features` key in payload.",
-            "example": {"features": [0.0] * EXPECTED_FEATURES}
-        }), 400
-
-    try:
-        raw_features = data["features"]
-        input_array = np.array(raw_features, dtype=np.float32)
-
-        # Reshape 1D inputs (single sample) to 2D (batch_size=1, features=10)
-        if input_array.ndim == 1:
-            input_array = np.expand_dims(input_array, axis=0)
-
-        # Validate feature vector shape
-        if input_array.ndim != 2 or input_array.shape[1] != EXPECTED_FEATURES:
-            return jsonify({
-                "error": f"Invalid feature dimensions. Expected shape (N, {EXPECTED_FEATURES}), received {input_array.shape}."
-            }), 422
-
-        # ⚡ Run Model Inference
-        raw_predictions = model.predict(input_array, verbose=0)
-        probabilities = raw_predictions.flatten().tolist()
-        predicted_classes = [int(p >= DECISION_THRESHOLD) for p in probabilities]
-
-        response = {
-            "status": "success",
-            "samples_processed": len(probabilities),
-            "probabilities": probabilities,
-            "predictions": predicted_classes
+# --- Combined HTML/CSS Template with Modern UI ---
+HTML_TEMPLATE = """
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>🧠 ANN Prediction Engine</title>
+    <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;600;700&display=swap" rel="stylesheet">
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+            font-family: 'Outfit', sans-serif;
         }
 
-        # Unpack single-sample responses for cleaner output
-        if len(probabilities) == 1:
-            response["probability"] = probabilities[0]
-            response["prediction"] = predicted_classes[0]
+        body {
+            min-height: 100vh;
+            background: linear-gradient(-45deg, #0f172a, #1e1b4b, #311042, #022c22);
+            background-size: 400% 400%;
+            animation: gradientShift 14s ease infinite;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            padding: 2rem;
+            color: #f8fafc;
+        }
 
-        return jsonify(response), 200
+        @keyframes gradientShift {
+            0% { background-position: 0% 50%; }
+            50% { background-position: 100% 50%; }
+            100% { background-position: 0% 50%; }
+        }
 
-    except Exception as e:
-        logger.error(f"🔥 Prediction failed: {str(e)}")
-        return jsonify({"error": "Internal inference error", "details": str(e)}), 500
+        .container {
+            width: 100%;
+            max-width: 850px;
+            background: rgba(255, 255, 255, 0.05);
+            backdrop-filter: blur(18px);
+            -webkit-backdrop-filter: blur(18px);
+            border: 1px solid rgba(255, 255, 255, 0.15);
+            border-radius: 24px;
+            padding: 2.5rem;
+            box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.6);
+        }
 
+        .header {
+            text-align: center;
+            margin-bottom: 2rem;
+        }
 
-# ---------------------------------------------------------
-# 🚀 Entrypoint
-# ---------------------------------------------------------
+        .header h1 {
+            font-size: 2.3rem;
+            font-weight: 700;
+            background: linear-gradient(135deg, #38bdf8, #a855f7);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            margin-bottom: 0.5rem;
+        }
+
+        .header p {
+            color: #94a3b8;
+            font-size: 0.95rem;
+            letter-spacing: 0.5px;
+        }
+
+        .form-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
+            gap: 1.25rem;
+            margin-bottom: 2rem;
+        }
+
+        .input-group {
+            display: flex;
+            flex-direction: column;
+            gap: 0.4rem;
+        }
+
+        .input-group label {
+            font-size: 0.82rem;
+            font-weight: 600;
+            color: #cbd5e1;
+            text-transform: uppercase;
+            letter-spacing: 0.05em;
+        }
+
+        .input-group input {
+            background: rgba(15, 23, 42, 0.6);
+            border: 1px solid rgba(255, 255, 255, 0.12);
+            border-radius: 12px;
+            padding: 0.75rem 1rem;
+            color: #fff;
+            font-size: 0.95rem;
+            outline: none;
+            transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+        }
+
+        .input-group input:focus {
+            border-color: #38bdf8;
+            box-shadow: 0 0 15px rgba(56, 189, 248, 0.3);
+            background: rgba(15, 23, 42, 0.85);
+        }
+
+        .btn-submit {
+            width: 100%;
+            padding: 1rem;
+            border: none;
+            border-radius: 12px;
+            background: linear-gradient(135deg, #0284c7, #9333ea);
+            color: #ffffff;
+            font-size: 1.05rem;
+            font-weight: 600;
+            cursor: pointer;
+            transition: transform 0.2s ease, box-shadow 0.2s ease;
+            box-shadow: 0 10px 20px -5px rgba(147, 51, 234, 0.4);
+        }
+
+        .btn-submit:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 15px 25px -5px rgba(147, 51, 234, 0.6);
+        }
+
+        .result-box {
+            margin-top: 2rem;
+            padding: 1.5rem;
+            border-radius: 16px;
+            background: rgba(15, 23, 42, 0.75);
+            border: 1px solid rgba(56, 189, 248, 0.3);
+            text-align: center;
+            animation: fadeIn 0.5s ease-out forwards;
+        }
+
+        @keyframes fadeIn {
+            from { opacity: 0; transform: translateY(10px); }
+            to { opacity: 1; transform: translateY(0); }
+        }
+
+        .result-title {
+            font-size: 0.85rem;
+            text-transform: uppercase;
+            color: #94a3b8;
+            margin-bottom: 0.4rem;
+        }
+
+        .result-score {
+            font-size: 2rem;
+            font-weight: 700;
+            color: #38bdf8;
+        }
+
+        .result-status {
+            margin-top: 0.5rem;
+            font-size: 1.1rem;
+            font-weight: 600;
+        }
+
+        .status-high { color: #4ade80; }
+        .status-low { color: #f87171; }
+        .error-msg { color: #fb7185; }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <h1>🧠 Neural Network Engine</h1>
+            <p>✨ Real-Time 10-Feature Binary Inference</p>
+        </div>
+
+        <form method="POST" action="/">
+            <div class="form-grid">
+                {% for i in range(1, 11) %}
+                <div class="input-group">
+                    <label>⚡ Feature {{ i }}</label>
+                    <input type="number" step="any" name="f{{ i }}" placeholder="0.00" required 
+                           value="{{ inputs['f' ~ i] if inputs else '' }}">
+                </div>
+                {% endfor %}
+            </div>
+            <button type="submit" class="btn-submit">🚀 Run Model Inference</button>
+        </form>
+
+        {% if prediction is not none %}
+        <div class="result-box">
+            <div class="result-title">Model Confidence Score</div>
+            <div class="result-score">{{ "%.4f"|format(prediction) }}</div>
+            <div class="result-status {{ 'status-high' if prediction >= 0.5 else 'status-low' }}">
+                {% if prediction >= 0.5 %}
+                    🌟 Classification: Positive Class (≥ 0.50)
+                {% else %}
+                    ❄️ Classification: Negative Class (&lt; 0.50)
+                {% endif %}
+            </div>
+        </div>
+        {% elif error %}
+        <div class="result-box">
+            <p class="error-msg">⚠️ {{ error }}</p>
+        </div>
+        {% endif %}
+    </div>
+</body>
+</html>
+"""
+
+@app.route("/", methods=["GET", "POST"])
+def home():
+    prediction = None
+    error = None
+    inputs = None
+
+    if request.method == "POST":
+        inputs = request.form
+        try:
+            # Extract 10 input values
+            feature_values = [float(request.form.get(f"f{i}", 0)) for i in range(1, 11)]
+            
+            # Format input array for (batch_size, 10)
+            input_tensor = np.array([feature_values], dtype=np.float32)
+
+            # Inference
+            if model is not None:
+                pred = model.predict(input_tensor)
+                prediction = float(pred[0][0])
+            else:
+                error = "Model is not loaded on server."
+        except Exception as err:
+            error = f"Inference Failed: {str(err)}"
+
+    return render_template_string(
+        HTML_TEMPLATE, 
+        prediction=prediction, 
+        error=error, 
+        inputs=inputs
+    )
+
 if __name__ == "__main__":
-    port = int(os.environ.get("PORT", 8080))
-    app.run(host="0.0.0.0", port=port)
+    # AWS Elastic Beanstalk / EC2 production port default
+    port = int(os.environ.get("PORT", 5000))
+    app.run(host="0.0.0.0", port=port, debug=False)
